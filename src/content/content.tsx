@@ -52,6 +52,7 @@ declare var chrome: any;
 // --- State Management ---
 let lastClickedElement: HTMLElement | null = null;
 let selectedElement: HTMLElement | null = null; // For interactive mode
+let currentHighlightedElement: HTMLElement | null = null; // For smart selection tracking
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 
 // We use a WeakMap to store state for individual elements without memory leaks
@@ -161,8 +162,36 @@ if (typeof document !== 'undefined') {
   selectionOverlay = createOverlay('flip-ext-selection-overlay', 'rgba(244, 63, 94, 0.2)'); // Rose-500 @ 0.2
 }
 
-function updateGlobalStyles() {
-  // We handle animation class dynamically based on settings
+// We handle animation class dynamically based on settings
+
+
+// --- Smart Selection Logic ---
+
+function getSmartTarget(x: number, y: number): HTMLElement | null {
+  const elements = document.elementsFromPoint(x, y);
+
+  // Check if we are hovering over the panel (Shadow Host)
+  // If so, we should NOT select anything behind it.
+  const isOverPanel = elements.some(el => el === shadowHost || shadowHost?.contains(el));
+  if (isOverPanel) return null;
+
+  // Filter out overlays
+  const validElements = elements.filter(el => {
+    return el !== hoverOverlay && el !== selectionOverlay;
+  });
+
+  if (validElements.length === 0) return null;
+
+  // Priority 1: Media Elements (Video, Img, SVG, Canvas)
+  const mediaElement = validElements.find(el => {
+    const tag = el.tagName.toUpperCase();
+    return ['VIDEO', 'IMG', 'SVG', 'CANVAS'].includes(tag);
+  });
+
+  if (mediaElement) return mediaElement as HTMLElement;
+
+  // Priority 2: The top-most valid element
+  return validElements[0] as HTMLElement;
 }
 
 // --- Event Listeners ---
@@ -170,15 +199,18 @@ function updateGlobalStyles() {
 // Track right-click target
 document.addEventListener('contextmenu', (e) => {
   if (isSelectionMode) {
-    const target = e.target as HTMLElement;
-    // Ignore if clicking inside our own panel
-    if (target === shadowHost || shadowHost?.contains(target)) return;
+    const target = getSmartTarget(e.clientX, e.clientY);
+    if (!target) return;
 
     e.preventDefault();
     handleSelection(target);
     return;
   }
-  lastClickedElement = e.target as HTMLElement;
+  // Even for normal context menu, try to be smart if it's a media element?
+  // The user might want to flip the video they right-clicked on.
+  // Let's use smart target for lastClickedElement too.
+  const smartTarget = getSmartTarget(e.clientX, e.clientY);
+  lastClickedElement = smartTarget || (e.target as HTMLElement);
 }, true);
 
 // Update overlays on scroll and resize
@@ -197,8 +229,15 @@ window.addEventListener('resize', () => {
 // Selection Mode Listeners
 document.addEventListener('mouseover', (e) => {
   if (isSelectionMode && isWhitelisted()) {
-    const target = e.target as HTMLElement;
-    if (target === shadowHost || shadowHost?.contains(target)) return;
+    // Use smart target instead of direct target
+    const target = getSmartTarget(e.clientX, e.clientY);
+    if (!target) return;
+
+    // Clear previous highlight if any
+    if (currentHighlightedElement && currentHighlightedElement !== target) {
+      currentHighlightedElement.classList.remove('flip-ext-highlight');
+    }
+    currentHighlightedElement = target;
     target.classList.add('flip-ext-highlight');
     updateOverlayPosition(hoverOverlay, target);
   }
@@ -206,16 +245,27 @@ document.addEventListener('mouseover', (e) => {
 
 document.addEventListener('mouseout', (e) => {
   if (isSelectionMode) {
-    (e.target as HTMLElement).classList.remove('flip-ext-highlight');
+    // We can't easily know which "smart target" was highlighted just by mouseout of a container.
+    // But we can just clear the highlight from the target that triggered mouseout, 
+    // AND maybe we should track the currently highlighted element globally to be safe?
+    // For now, let's just remove highlight from the event target AND the hover overlay.
+    // Actually, if we highlighted a child video, and mouseout happens on the parent overlay,
+    // we might miss clearing the video.
+    // Better approach: Keep track of `currentHighlightedElement`.
+
+    if (currentHighlightedElement) {
+      currentHighlightedElement.classList.remove('flip-ext-highlight');
+      currentHighlightedElement = null;
+    }
+
     if (hoverOverlay) hoverOverlay.style.display = 'none';
   }
 });
 
 document.addEventListener('click', (e) => {
   if (isSelectionMode && isWhitelisted()) {
-    const target = e.target as HTMLElement;
-    // Ignore if clicking inside our own panel
-    if (target === shadowHost || shadowHost?.contains(target)) return;
+    const target = getSmartTarget(e.clientX, e.clientY);
+    if (!target) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -574,6 +624,13 @@ function applyTransformToElement(element: HTMLElement, state: TransformState, sc
   }
 
   element.style.transform = transformString;
+
+  // INLINE FIX:
+  // CSS transforms don't work on inline elements. Force inline-block.
+  const display = window.getComputedStyle(element).display;
+  if (display === 'inline') {
+    element.style.display = 'inline-block';
+  }
 
   // For page scope, ensure body takes up full height/width so transforms don't clip or collapse
   if (scope === TargetScope.PAGE) {

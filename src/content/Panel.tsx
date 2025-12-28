@@ -55,6 +55,14 @@ const Panel: React.FC<PanelProps> = ({
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
     const dragStart = useRef({ x: 0, y: 0 });
     const dialRef = useRef<HTMLDivElement>(null);
+    const settingsRef = useRef<HTMLDivElement>(null);
+
+    // Auto-close settings menu when interacting outside of it
+    const handleRootMouseDown = (e: React.MouseEvent) => {
+        if (showSettingsMenu && settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+            setShowSettingsMenu(false);
+        }
+    };
 
     const handleMouseDown = (e: React.MouseEvent) => {
         if ((e.target as HTMLElement).closest('.no-drag')) return;
@@ -116,6 +124,7 @@ const Panel: React.FC<PanelProps> = ({
 
     return (
         <div
+            onMouseDownCapture={handleRootMouseDown}
             style={{
                 position: 'fixed',
                 top: position.y,
@@ -219,7 +228,7 @@ const Panel: React.FC<PanelProps> = ({
                     </span>
                 </div>
                 <div className="no-drag" style={{ display: 'flex', gap: '4px' }}>
-                    <div style={{ position: 'relative' }}>
+                    <div ref={settingsRef} style={{ position: 'relative' }}>
                         <button
                             onClick={() => setShowSettingsMenu(!showSettingsMenu)}
                             style={{
