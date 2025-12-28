@@ -26,7 +26,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
   chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
       id: 'flip-root',
-      title: 'Flip & Rotate Element',
+      title: 'Flip and Rotate Ultimate',
       contexts: ['all']
     });
 
@@ -60,8 +60,22 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
 
     chrome.contextMenus.create({
       parentId: 'flip-root',
+      id: 'rotate-270',
+      title: 'Rotate 270°',
+      contexts: ['all']
+    });
+
+    chrome.contextMenus.create({
+      parentId: 'flip-root',
       id: 'reset',
       title: 'Reset Element',
+      contexts: ['all']
+    });
+
+    chrome.contextMenus.create({
+      parentId: 'flip-root',
+      id: 'open-panel',
+      title: 'Show more settings',
       contexts: ['all']
     });
   });
@@ -112,6 +126,13 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
         break;
       case 'reset':
         action = ActionType.RESET;
+        break;
+      case 'rotate-270':
+        action = ActionType.ROTATE;
+        payload = { degrees: 270, relative: true };
+        break;
+      case 'open-panel':
+        action = ActionType.OPEN_PANEL;
         break;
     }
 

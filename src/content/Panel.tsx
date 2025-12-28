@@ -27,6 +27,7 @@ interface PanelProps {
     position: { x: number; y: number };
     onPositionChange: (pos: { x: number; y: number }) => void;
     showFullPage: boolean;
+    onShowShortcuts: () => void;
 }
 
 const Panel: React.FC<PanelProps> = ({
@@ -46,7 +47,8 @@ const Panel: React.FC<PanelProps> = ({
     statusText,
     position,
     onPositionChange,
-    showFullPage
+    showFullPage,
+    onShowShortcuts
 }) => {
     // const [position, setPosition] = useState({ x: 20, y: 20 }); // Lifted up
     const [isDragging, setIsDragging] = useState(false);
@@ -205,7 +207,7 @@ const Panel: React.FC<PanelProps> = ({
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#fff' }}>Media Flip</span>
+                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#fff' }}>Flip & Rotate</span>
                     <span style={{
                         fontSize: '10px',
                         color: '#9ca3af',
@@ -247,6 +249,9 @@ const Panel: React.FC<PanelProps> = ({
                             }}>
                                 <button className="settings-menu-item" onClick={() => { onEnableIncognito(); setShowSettingsMenu(false); }}>
                                     Enable in Incognito
+                                </button>
+                                <button className="settings-menu-item" onClick={() => { onShowShortcuts(); setShowSettingsMenu(false); }}>
+                                    Shortcuts
                                 </button>
                                 <button className="settings-menu-item" onClick={() => { onToggleFullPage(); setShowSettingsMenu(false); }}>
                                     {showFullPage ? 'Hide Full Page Options' : 'Show Full Page Options'}
@@ -345,6 +350,52 @@ const Panel: React.FC<PanelProps> = ({
                     </div>
                 </div>
 
+            </div>
+        </div>
+    );
+};
+
+export const ShortcutsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 2147483647
+        }} onClick={onClose}>
+            <div style={{
+                backgroundColor: '#1f2937',
+                color: 'white',
+                padding: '24px',
+                borderRadius: '12px',
+                width: '320px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                border: '1px solid #374151'
+            }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Keyboard Shortcuts</h2>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#d1d5db' }}>Close Extension</span>
+                        <code style={{ backgroundColor: '#374151', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>Esc</code>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#d1d5db' }}>Reset Transform</span>
+                        <code style={{ backgroundColor: '#374151', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>R</code>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#d1d5db' }}>Toggle Full Page</span>
+                        <code style={{ backgroundColor: '#374151', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>H</code>
+                    </div>
+                </div>
             </div>
         </div>
     );

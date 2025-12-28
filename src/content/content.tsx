@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import Panel from './Panel';
+import Panel, { ShortcutsModal } from './Panel';
 import FullPagePanel from './FullPagePanel';
 
 // Inlined from types.ts to avoid import issues in content script
@@ -69,7 +69,12 @@ const pageState: TransformState = {
 let isPanelOpen = false;
 let isSelectionMode = false;
 let shadowHost: HTMLElement | null = null;
+
 let reactRoot: Root | null = null;
+
+// Overlays
+let hoverOverlay: HTMLElement | null = null;
+let selectionOverlay: HTMLElement | null = null;
 
 // --- Initialization ---
 
@@ -109,7 +114,52 @@ styleSheet.textContent = `
     outline-offset: 2px !important;
   }
 `;
+
 document.head.appendChild(styleSheet);
+
+function createOverlay(id: string, color: string): HTMLElement {
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.style.position = 'absolute';
+  overlay.style.pointerEvents = 'none';
+  overlay.style.zIndex = '2147483646'; // Just below the panel (MAX_INT - 1)
+  overlay.style.backgroundColor = color;
+  overlay.style.transition = 'all 0.1s ease-out';
+  overlay.style.display = 'none';
+  // Add a border to make it look even more like Chrome's
+  // overlay.style.border = '1px solid rgba(255, 255, 255, 0.5)'; 
+  document.documentElement.appendChild(overlay);
+  return overlay;
+}
+
+function updateOverlayPosition(overlay: HTMLElement | null, target: HTMLElement | null) {
+  if (!overlay || !target) {
+    if (overlay) overlay.style.display = 'none';
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  const scrollTop = window.scrollY;
+  const scrollLeft = window.scrollX;
+
+  overlay.style.width = `${rect.width}px`;
+  overlay.style.height = `${rect.height}px`;
+  overlay.style.top = `${rect.top + scrollTop}px`;
+  overlay.style.left = `${rect.left + scrollLeft}px`;
+  overlay.style.display = 'block';
+}
+
+// Initialize overlays
+if (typeof document !== 'undefined') {
+  // Chrome DevTools uses a light blue for content: rgba(135, 206, 235, 0.6) roughly
+  // User asked for "blue translucent overlay"
+  hoverOverlay = createOverlay('flip-ext-hover-overlay', 'rgba(59, 130, 246, 0.4)'); // Blue-500 @ 0.4
+
+  // For selection, user said "in addition to red dotted line... translucent layer"
+  // Maybe a reddish overlay to match the dotted line? Or keep it blue?
+  // Let's use a very light red/rose to match the selection theme but keep it subtle so it doesn't obscure too much
+  selectionOverlay = createOverlay('flip-ext-selection-overlay', 'rgba(244, 63, 94, 0.2)'); // Rose-500 @ 0.2
+}
 
 function updateGlobalStyles() {
   // We handle animation class dynamically based on settings
@@ -131,18 +181,33 @@ document.addEventListener('contextmenu', (e) => {
   lastClickedElement = e.target as HTMLElement;
 }, true);
 
+// Update overlays on scroll and resize
+window.addEventListener('scroll', () => {
+  if (isSelectionMode && lastClickedElement) { // lastClickedElement tracks hover in this context? No.
+    // We don't easily track the *currently hovered* element for scroll updates without keeping state.
+    // But we DO track selectedElement.
+    updateOverlayPosition(selectionOverlay, selectedElement);
+  }
+}, { passive: true });
+
+window.addEventListener('resize', () => {
+  updateOverlayPosition(selectionOverlay, selectedElement);
+}, { passive: true });
+
 // Selection Mode Listeners
 document.addEventListener('mouseover', (e) => {
   if (isSelectionMode && isWhitelisted()) {
     const target = e.target as HTMLElement;
     if (target === shadowHost || shadowHost?.contains(target)) return;
     target.classList.add('flip-ext-highlight');
+    updateOverlayPosition(hoverOverlay, target);
   }
 });
 
 document.addEventListener('mouseout', (e) => {
   if (isSelectionMode) {
     (e.target as HTMLElement).classList.remove('flip-ext-highlight');
+    if (hoverOverlay) hoverOverlay.style.display = 'none';
   }
 });
 
@@ -159,6 +224,8 @@ document.addEventListener('click', (e) => {
 }, true);
 
 
+
+
 function handleSelection(element: HTMLElement) {
   if (shadowHost?.contains(element)) return;
 
@@ -168,6 +235,10 @@ function handleSelection(element: HTMLElement) {
   selectedElement = element;
   selectedElement.classList.add('flip-ext-selected');
   selectedElement.classList.remove('flip-ext-highlight');
+
+  // Update Overlays
+  if (hoverOverlay) hoverOverlay.style.display = 'none';
+  updateOverlayPosition(selectionOverlay, selectedElement);
 
   // Keep selection mode active or disable it? 
   // User request: "as soon as the modal has popped-up, I want the element selector action to get active"
@@ -186,6 +257,10 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     }
 
     if (message.type === ActionType.OPEN_PANEL) {
+      // If triggered from context menu on an element, select it
+      if (message.scope === TargetScope.ELEMENT && lastClickedElement) {
+        handleSelection(lastClickedElement);
+      }
       openPanel();
       return;
     }
@@ -259,6 +334,8 @@ function unmountPanel() {
     selectedElement.classList.remove('flip-ext-selected');
     selectedElement = null;
   }
+  if (selectionOverlay) selectionOverlay.style.display = 'none';
+  if (hoverOverlay) hoverOverlay.style.display = 'none';
   isSelectionMode = false;
 }
 
@@ -266,6 +343,7 @@ function unmountPanel() {
 // React Component to manage Panel State
 const PanelContainer = () => {
   const [showFullPage, setShowFullPage] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 340, y: 20 });
   // Force update to re-render when external state changes
   const [, forceUpdate] = useState({});
@@ -275,6 +353,35 @@ const PanelContainer = () => {
     (window as any).__flip_render_panel = () => forceUpdate({});
     return () => { (window as any).__flip_render_panel = null; };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (showShortcuts) {
+          setShowShortcuts(false);
+        } else {
+          closePanel();
+        }
+      }
+
+      // Only handle other shortcuts if not typing in an input (though we don't have inputs yet)
+      // and if shortcuts modal is not open? Maybe allow closing shortcuts with Esc (handled above)
+      if (showShortcuts) return;
+
+      if (e.key.toLowerCase() === 'r') {
+        updateTransform(ActionType.RESET, undefined, TargetScope.ELEMENT);
+      }
+
+      if (e.key.toLowerCase() === 'h') {
+        setShowFullPage(prev => !prev);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [showShortcuts]);
 
   const target = selectedElement || document.body;
   const elementState = getElementState(target, selectedElement ? TargetScope.ELEMENT : TargetScope.PAGE);
@@ -304,6 +411,7 @@ const PanelContainer = () => {
         }}
         onToggleFullPage={() => setShowFullPage(!showFullPage)}
         showFullPage={showFullPage}
+        onShowShortcuts={() => setShowShortcuts(true)}
         isSelectionMode={isSelectionMode}
         currentRotation={elementState.rotation}
         currentZoom={elementState.zoom}
@@ -311,6 +419,10 @@ const PanelContainer = () => {
         position={panelPosition}
         onPositionChange={setPanelPosition}
       />
+
+      {showShortcuts && (
+        <ShortcutsModal onClose={() => setShowShortcuts(false)} />
+      )}
 
       {showFullPage && (
         <FullPagePanel
@@ -378,6 +490,14 @@ function updateTransform(action: ActionType, payload?: any, forcedScope?: Target
   }
 
   applyTransform(target, scope, action, payload);
+
+  // Update overlay position after transform (in case it moved/resized)
+  // We might need a slight delay or to wait for transition?
+  // If animations are enabled, the rect changes over time.
+  // For now, just update immediately.
+  if (scope === TargetScope.ELEMENT) {
+    updateOverlayPosition(selectionOverlay, target);
+  }
   renderPanel();
 }
 
