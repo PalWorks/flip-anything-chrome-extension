@@ -105,7 +105,7 @@ styleSheet.textContent = `
     cursor: crosshair !important;
   }
   .flip-ext-selected {
-    outline: 2px solid #3b82f6 !important;
+    outline: 4px dotted #f43f5e !important;
     outline-offset: 2px !important;
   }
 `;
@@ -266,7 +266,7 @@ function unmountPanel() {
 // React Component to manage Panel State
 const PanelContainer = () => {
   const [showFullPage, setShowFullPage] = useState(false);
-  const [panelPosition, setPanelPosition] = useState({ x: 20, y: 20 });
+  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 340, y: 20 });
   // Force update to re-render when external state changes
   const [, forceUpdate] = useState({});
 
