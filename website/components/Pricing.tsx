@@ -3,7 +3,7 @@ import { CheckIcon, ChromeIcon } from './Icons';
 
 export const Pricing: React.FC = () => {
   return (
-    <section className="py-24 bg-slate-900 text-white relative">
+    <section id="pricing" className="py-24 bg-slate-900 text-white relative">
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-[20%] -right-[10%] w-[50%] h-[80%] bg-primary-500/10 blur-[100px] rounded-full" />
         <div className="absolute top-[20%] -left-[10%] w-[40%] h-[60%] bg-secondary-500/10 blur-[100px] rounded-full" />
@@ -45,15 +45,15 @@ export const Pricing: React.FC = () => {
               <PricingFeature text="Regular Updates & Support" />
             </div>
 
-            <a 
-              href="https://chrome.google.com/webstore" 
-              target="_blank" 
+            <a
+              href="https://chrome.google.com/webstore"
+              target="_blank"
               rel="noopener noreferrer"
               className="block w-full py-4 px-6 bg-gradient-to-r from-primary-600 to-secondary-600 hover:from-primary-500 hover:to-secondary-500 rounded-xl font-bold text-center text-lg shadow-lg shadow-primary-900/20 transition-all hover:scale-[1.02]"
             >
               Add to Chrome - It's Free
             </a>
-            
+
             <p className="text-center text-xs text-slate-500 mt-4">
               Version 2.0 • Compatible with Chrome v88+
             </p>
@@ -64,7 +64,7 @@ export const Pricing: React.FC = () => {
   );
 };
 
-const PricingFeature: React.FC<{text: string}> = ({ text }) => (
+const PricingFeature: React.FC<{ text: string }> = ({ text }) => (
   <div className="flex items-start gap-3">
     <div className="bg-green-500/20 p-1 rounded-full mt-0.5">
       <CheckIcon className="w-4 h-4 text-green-400" />

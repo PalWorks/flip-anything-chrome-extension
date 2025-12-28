@@ -41,7 +41,7 @@ export const ContactSection: React.FC = () => {
                     <p className="text-slate-600">Have questions or feedback? We'd love to hear from you.</p>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                     <iframe
                         data-tally-src="https://tally.so/embed/81zXEl?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1"
                         loading="lazy"
