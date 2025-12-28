@@ -10,7 +10,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute }) => {
     <nav className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.location.hash = '#/'}>
-          <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded-lg shadow-sm" />
+          <img src="/logo.jpg" alt="Logo" className="w-10 h-10 rounded-lg shadow-sm" />
           <span className="font-bold text-xl text-slate-800 tracking-tight">Flip & Rotate Ultimate</span>
         </div>
 
