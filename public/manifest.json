@@ -4,8 +4,6 @@
   "version": "1.0.0",
   "description": "Flip or rotate any page or element. Includes context menu integration and whitelist support.",
   "permissions": [
-    "activeTab",
-    "scripting",
     "contextMenus",
     "storage"
   ],

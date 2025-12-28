@@ -22,7 +22,6 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         input: {
-          main: path.resolve(__dirname, 'index.html'),
           background: path.resolve(__dirname, 'background.ts'),
           // content: path.resolve(__dirname, 'src/content/content.tsx'), // Built separately via vite.content.config.ts
         },
