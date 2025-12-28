@@ -8,7 +8,8 @@ enum ActionType {
   GET_STATE = 'GET_STATE',
   TOGGLE_INTERACTIVE = 'TOGGLE_INTERACTIVE',
   OPEN_PANEL = 'OPEN_PANEL',
-  OPEN_SETTINGS = 'OPEN_SETTINGS'
+  OPEN_SETTINGS = 'OPEN_SETTINGS',
+  OPEN_EXT_MANAGEMENT = 'OPEN_EXT_MANAGEMENT'
 }
 
 enum TargetScope {
@@ -81,6 +82,9 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
   chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
     if (message.type === ActionType.OPEN_SETTINGS) {
       chrome.runtime.openOptionsPage ? chrome.runtime.openOptionsPage() : window.open(chrome.runtime.getURL('options.html'));
+    }
+    if (message.type === ActionType.OPEN_EXT_MANAGEMENT) {
+      chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id });
     }
   });
 

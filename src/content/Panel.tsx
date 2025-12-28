@@ -18,6 +18,7 @@ interface PanelProps {
     onReset: () => void;
     onToggleSelectionMode: () => void;
     onOpenSettings: () => void;
+    onEnableIncognito: () => void;
     onToggleFullPage: () => void;
     isSelectionMode: boolean;
     currentRotation: number;
@@ -25,6 +26,7 @@ interface PanelProps {
     statusText: string;
     position: { x: number; y: number };
     onPositionChange: (pos: { x: number; y: number }) => void;
+    showFullPage: boolean;
 }
 
 const Panel: React.FC<PanelProps> = ({
@@ -36,13 +38,15 @@ const Panel: React.FC<PanelProps> = ({
     onReset,
     onToggleSelectionMode,
     onOpenSettings,
+    onEnableIncognito,
     onToggleFullPage,
     isSelectionMode,
     currentRotation,
     currentZoom,
     statusText,
     position,
-    onPositionChange
+    onPositionChange,
+    showFullPage
 }) => {
     // const [position, setPosition] = useState({ x: 20, y: 20 }); // Lifted up
     const [isDragging, setIsDragging] = useState(false);
@@ -241,14 +245,11 @@ const Panel: React.FC<PanelProps> = ({
                                 zIndex: 2147483647,
                                 overflow: 'hidden'
                             }}>
-                                <button className="settings-menu-item" onClick={() => { onOpenSettings(); setShowSettingsMenu(false); }}>
-                                    Open Extension Settings
-                                </button>
-                                <button className="settings-menu-item" onClick={() => { onOpenSettings(); setShowSettingsMenu(false); }}>
+                                <button className="settings-menu-item" onClick={() => { onEnableIncognito(); setShowSettingsMenu(false); }}>
                                     Enable in Incognito
                                 </button>
                                 <button className="settings-menu-item" onClick={() => { onToggleFullPage(); setShowSettingsMenu(false); }}>
-                                    Show Full Page Options
+                                    {showFullPage ? 'Hide Full Page Options' : 'Show Full Page Options'}
                                 </button>
                             </div>
                         )}

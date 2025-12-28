@@ -13,7 +13,8 @@ enum ActionType {
   GET_STATE = 'GET_STATE',
   TOGGLE_INTERACTIVE = 'TOGGLE_INTERACTIVE',
   OPEN_PANEL = 'OPEN_PANEL',
-  OPEN_SETTINGS = 'OPEN_SETTINGS'
+  OPEN_SETTINGS = 'OPEN_SETTINGS',
+  OPEN_EXT_MANAGEMENT = 'OPEN_EXT_MANAGEMENT'
 }
 
 enum TargetScope {
@@ -119,8 +120,12 @@ function updateGlobalStyles() {
 // Track right-click target
 document.addEventListener('contextmenu', (e) => {
   if (isSelectionMode) {
+    const target = e.target as HTMLElement;
+    // Ignore if clicking inside our own panel
+    if (target === shadowHost || shadowHost?.contains(target)) return;
+
     e.preventDefault();
-    handleSelection(e.target as HTMLElement);
+    handleSelection(target);
     return;
   }
   lastClickedElement = e.target as HTMLElement;
@@ -143,9 +148,13 @@ document.addEventListener('mouseout', (e) => {
 
 document.addEventListener('click', (e) => {
   if (isSelectionMode && isWhitelisted()) {
+    const target = e.target as HTMLElement;
+    // Ignore if clicking inside our own panel
+    if (target === shadowHost || shadowHost?.contains(target)) return;
+
     e.preventDefault();
     e.stopPropagation();
-    handleSelection(e.target as HTMLElement);
+    handleSelection(target);
   }
 }, true);
 
@@ -290,7 +299,11 @@ const PanelContainer = () => {
         onOpenSettings={() => {
           chrome.runtime.sendMessage({ type: ActionType.OPEN_SETTINGS });
         }}
+        onEnableIncognito={() => {
+          chrome.runtime.sendMessage({ type: ActionType.OPEN_EXT_MANAGEMENT });
+        }}
         onToggleFullPage={() => setShowFullPage(!showFullPage)}
+        showFullPage={showFullPage}
         isSelectionMode={isSelectionMode}
         currentRotation={elementState.rotation}
         currentZoom={elementState.zoom}
