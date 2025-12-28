@@ -24,6 +24,8 @@ declare var chrome: any;
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
   // Setup Context Menus on Install
   chrome.runtime.onInstalled.addListener(() => {
+    chrome.runtime.setUninstallURL('https://palworks.github.io/Flip-and-Rotate-Ultimate/#/uninstall');
+
     chrome.contextMenus.create({
       id: 'flip-root',
       title: 'Flip and Rotate Ultimate',

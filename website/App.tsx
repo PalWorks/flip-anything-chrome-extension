@@ -3,6 +3,7 @@ import { Home } from './pages/Home';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
 import { Contact } from './pages/Contact';
+import { UninstallFeedback } from './pages/UninstallFeedback';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 
@@ -30,6 +31,8 @@ const App: React.FC = () => {
         return <TermsOfService />;
       case '#/contact':
         return <Contact />;
+      case '#/uninstall':
+        return <UninstallFeedback />;
       case '#/':
       default:
         return <Home />;
@@ -38,11 +41,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900">
-      <Navbar currentRoute={route} />
-      <main className="flex-grow pt-16">
+      {route !== '#/uninstall' && <Navbar currentRoute={route} />}
+      <main className={`flex-grow ${route !== '#/uninstall' ? 'pt-16' : ''}`}>
         {renderPage()}
       </main>
-      <Footer />
+      {route !== '#/uninstall' && <Footer />}
     </div>
   );
 };
