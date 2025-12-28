@@ -50,8 +50,9 @@ const DEFAULT_SETTINGS: AppSettings = {
 declare var chrome: any;
 
 // --- State Management ---
+// --- State Management ---
 let lastClickedElement: HTMLElement | null = null;
-let selectedElement: HTMLElement | null = null; // For interactive mode
+let selectedElements = new Set<HTMLElement>(); // Changed to Set for multi-selection
 let currentHighlightedElement: HTMLElement | null = null; // For smart selection tracking
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 
@@ -75,7 +76,7 @@ let reactRoot: Root | null = null;
 
 // Overlays
 let hoverOverlay: HTMLElement | null = null;
-let selectionOverlay: HTMLElement | null = null;
+const selectionOverlays = new Map<HTMLElement, HTMLElement>(); // Changed to Map
 
 // --- Initialization ---
 
@@ -127,10 +128,31 @@ function createOverlay(id: string, color: string): HTMLElement {
   overlay.style.backgroundColor = color;
   overlay.style.transition = 'all 0.1s ease-out';
   overlay.style.display = 'none';
-  // Add a border to make it look even more like Chrome's
-  // overlay.style.border = '1px solid rgba(255, 255, 255, 0.5)'; 
   document.documentElement.appendChild(overlay);
   return overlay;
+}
+
+function addSelectionOverlay(element: HTMLElement) {
+  if (selectionOverlays.has(element)) return;
+  const overlay = createOverlay(`flip-ext-selection-${Date.now()}-${Math.random()}`, 'rgba(244, 63, 94, 0.2)');
+  selectionOverlays.set(element, overlay);
+  updateOverlayPosition(overlay, element);
+}
+
+function removeSelectionOverlay(element: HTMLElement) {
+  const overlay = selectionOverlays.get(element);
+  if (overlay) {
+    overlay.remove();
+    selectionOverlays.delete(element);
+  }
+}
+
+function clearSelection() {
+  selectedElements.forEach(el => {
+    el.classList.remove('flip-ext-selected');
+    removeSelectionOverlay(el);
+  });
+  selectedElements.clear();
 }
 
 function updateOverlayPosition(overlay: HTMLElement | null, target: HTMLElement | null) {
@@ -152,18 +174,8 @@ function updateOverlayPosition(overlay: HTMLElement | null, target: HTMLElement 
 
 // Initialize overlays
 if (typeof document !== 'undefined') {
-  // Chrome DevTools uses a light blue for content: rgba(135, 206, 235, 0.6) roughly
-  // User asked for "blue translucent overlay"
   hoverOverlay = createOverlay('flip-ext-hover-overlay', 'rgba(59, 130, 246, 0.4)'); // Blue-500 @ 0.4
-
-  // For selection, user said "in addition to red dotted line... translucent layer"
-  // Maybe a reddish overlay to match the dotted line? Or keep it blue?
-  // Let's use a very light red/rose to match the selection theme but keep it subtle so it doesn't obscure too much
-  selectionOverlay = createOverlay('flip-ext-selection-overlay', 'rgba(244, 63, 94, 0.2)'); // Rose-500 @ 0.2
 }
-
-// We handle animation class dynamically based on settings
-
 
 // --- Smart Selection Logic ---
 
@@ -177,7 +189,13 @@ function getSmartTarget(x: number, y: number): HTMLElement | null {
 
   // Filter out overlays
   const validElements = elements.filter(el => {
-    return el !== hoverOverlay && el !== selectionOverlay;
+    // Check if element is any of our overlays
+    if (el === hoverOverlay) return false;
+    // Check if it's one of the selection overlays
+    for (const overlay of selectionOverlays.values()) {
+      if (el === overlay) return false;
+    }
+    return true;
   });
 
   if (validElements.length === 0) return null;
@@ -203,7 +221,7 @@ document.addEventListener('contextmenu', (e) => {
     if (!target) return;
 
     e.preventDefault();
-    handleSelection(target);
+    handleSelection(target, e.shiftKey || e.ctrlKey || e.metaKey);
     return;
   }
   // Even for normal context menu, try to be smart if it's a media element?
@@ -215,15 +233,21 @@ document.addEventListener('contextmenu', (e) => {
 
 // Update overlays on scroll and resize
 window.addEventListener('scroll', () => {
-  if (isSelectionMode && lastClickedElement) { // lastClickedElement tracks hover in this context? No.
-    // We don't easily track the *currently hovered* element for scroll updates without keeping state.
-    // But we DO track selectedElement.
-    updateOverlayPosition(selectionOverlay, selectedElement);
+  if (selectedElements.size > 0) {
+    selectedElements.forEach(el => {
+      const overlay = selectionOverlays.get(el);
+      updateOverlayPosition(overlay || null, el);
+    });
   }
 }, { passive: true });
 
 window.addEventListener('resize', () => {
-  updateOverlayPosition(selectionOverlay, selectedElement);
+  if (selectedElements.size > 0) {
+    selectedElements.forEach(el => {
+      const overlay = selectionOverlays.get(el);
+      updateOverlayPosition(overlay || null, el);
+    });
+  }
 }, { passive: true });
 
 // Selection Mode Listeners
@@ -245,14 +269,6 @@ document.addEventListener('mouseover', (e) => {
 
 document.addEventListener('mouseout', (e) => {
   if (isSelectionMode) {
-    // We can't easily know which "smart target" was highlighted just by mouseout of a container.
-    // But we can just clear the highlight from the target that triggered mouseout, 
-    // AND maybe we should track the currently highlighted element globally to be safe?
-    // For now, let's just remove highlight from the event target AND the hover overlay.
-    // Actually, if we highlighted a child video, and mouseout happens on the parent overlay,
-    // we might miss clearing the video.
-    // Better approach: Keep track of `currentHighlightedElement`.
-
     if (currentHighlightedElement) {
       currentHighlightedElement.classList.remove('flip-ext-highlight');
       currentHighlightedElement = null;
@@ -269,31 +285,42 @@ document.addEventListener('click', (e) => {
 
     e.preventDefault();
     e.stopPropagation();
-    handleSelection(target);
+    handleSelection(target, e.shiftKey || e.ctrlKey || e.metaKey);
   }
 }, true);
 
 
 
 
-function handleSelection(element: HTMLElement) {
+function handleSelection(element: HTMLElement, isMultiSelect: boolean = false) {
   if (shadowHost?.contains(element)) return;
 
-  // Clear previous selection
-  if (selectedElement) selectedElement.classList.remove('flip-ext-selected');
+  if (isMultiSelect) {
+    if (selectedElements.has(element)) {
+      // Deselect
+      selectedElements.delete(element);
+      element.classList.remove('flip-ext-selected');
+      removeSelectionOverlay(element);
+    } else {
+      // Select
+      selectedElements.add(element);
+      element.classList.add('flip-ext-selected');
+      addSelectionOverlay(element);
+    }
+  } else {
+    // Single Selection
+    clearSelection();
+    selectedElements.add(element);
+    element.classList.add('flip-ext-selected');
+    addSelectionOverlay(element);
+  }
 
-  selectedElement = element;
-  selectedElement.classList.add('flip-ext-selected');
-  selectedElement.classList.remove('flip-ext-highlight');
-
-  // Update Overlays
+  // Remove highlight from current element as it is now selected
+  element.classList.remove('flip-ext-highlight');
   if (hoverOverlay) hoverOverlay.style.display = 'none';
-  updateOverlayPosition(selectionOverlay, selectedElement);
 
-  // Keep selection mode active or disable it? 
-  // User request: "as soon as the modal has popped-up, I want the element selector action to get active"
-  // Usually selection mode ends after selection. Let's end it but keep panel open.
-  isSelectionMode = false;
+  // Keep selection mode active
+  // isSelectionMode = false; // We keep it true now as per previous reset behavior change, and for multi-select flow
   renderPanel();
 }
 
@@ -380,16 +407,13 @@ function unmountPanel() {
     shadowHost.remove();
     shadowHost = null;
   }
-  if (selectedElement) {
-    selectedElement.classList.remove('flip-ext-selected');
-    selectedElement = null;
-  }
-  if (selectionOverlay) selectionOverlay.style.display = 'none';
+
+  clearSelection();
+
   if (hoverOverlay) hoverOverlay.style.display = 'none';
   isSelectionMode = false;
 }
 
-// React Component to manage Panel State
 // React Component to manage Panel State
 const PanelContainer = () => {
   const [showFullPage, setShowFullPage] = useState(false);
@@ -433,8 +457,9 @@ const PanelContainer = () => {
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [showShortcuts]);
 
-  const target = selectedElement || document.body;
-  const elementState = getElementState(target, selectedElement ? TargetScope.ELEMENT : TargetScope.PAGE);
+  const lastSelected = Array.from(selectedElements).pop();
+  const target = lastSelected || document.body;
+  const elementState = getElementState(target, lastSelected ? TargetScope.ELEMENT : TargetScope.PAGE);
 
   // Full Page State
   const fullPageState = pageState;
@@ -450,6 +475,9 @@ const PanelContainer = () => {
         onZoom={(scale) => updateTransform(ActionType.ROTATE, { zoom: scale }, TargetScope.ELEMENT)}
         onReset={() => updateTransform(ActionType.RESET, undefined, TargetScope.ELEMENT)}
         onToggleSelectionMode={() => {
+          if (isSelectionMode) {
+            clearSelection();
+          }
           isSelectionMode = !isSelectionMode;
           renderPanel();
         }}
@@ -465,7 +493,7 @@ const PanelContainer = () => {
         isSelectionMode={isSelectionMode}
         currentRotation={elementState.rotation}
         currentZoom={elementState.zoom}
-        statusText={selectedElement ? selectedElement.tagName : 'Select Element'}
+        statusText={selectedElements.size > 0 ? `${selectedElements.size} Selected` : 'Select Element'}
         position={panelPosition}
         onPositionChange={setPanelPosition}
       />
@@ -504,61 +532,54 @@ function updateTransform(action: ActionType, payload?: any, forcedScope?: Target
   // If forcedScope is provided (e.g. from FullPagePanel), use it.
   // Otherwise default to selected element or body.
 
-  let target: HTMLElement;
+  let targets: HTMLElement[] = [];
   let scope: TargetScope;
 
   if (forcedScope === TargetScope.PAGE) {
-    target = document.body;
+    targets = [document.body];
     scope = TargetScope.PAGE;
   } else {
     // Default / Element Panel behavior
-    // If we are in element panel, we operate on selectedElement. 
-    // If no selectedElement, we shouldn't really be doing anything unless we fallback to page?
-    // But user wants "Element Selector" to be primary.
-    if (selectedElement) {
-      target = selectedElement;
+    if (selectedElements.size > 0) {
+      targets = Array.from(selectedElements);
       scope = TargetScope.ELEMENT;
     } else {
-      // Fallback or ignore?
-      // Let's fallback to body but treat as ELEMENT scope if we want to support "Flip Body as Element"?
-      // No, let's just default to PAGE scope if nothing selected, OR warn user.
-      // Given the UI shows "Select Element", maybe we just return?
-      // But for Zoom, we might want to zoom page?
-      // Let's assume if no element selected, we target body as PAGE.
-      target = document.body;
+      // Fallback to page if nothing selected
+      targets = [document.body];
       scope = TargetScope.PAGE;
     }
   }
 
   // Special handling for Zoom
   if (payload && payload.zoom !== undefined) {
-    const state = getElementState(target, scope);
-    state.zoom = payload.zoom;
-    applyTransformToElement(target, state, scope);
+    targets.forEach(target => {
+      const state = getElementState(target, scope);
+      state.zoom = payload.zoom;
+      applyTransformToElement(target, state, scope);
+    });
     renderPanel();
     return;
   }
 
-  applyTransform(target, scope, action, payload);
+  targets.forEach(target => {
+    applyTransform(target, scope, action, payload);
+  });
 
   // Special handling for RESET: Deselect and re-enable selection mode
   if (action === ActionType.RESET && scope === TargetScope.ELEMENT) {
-    if (selectedElement) {
-      selectedElement.classList.remove('flip-ext-selected');
-      selectedElement = null;
-    }
-    if (selectionOverlay) selectionOverlay.style.display = 'none';
+    clearSelection();
+    if (hoverOverlay) hoverOverlay.style.display = 'none';
     isSelectionMode = true;
     renderPanel();
     return;
   }
 
   // Update overlay position after transform (in case it moved/resized)
-  // We might need a slight delay or to wait for transition?
-  // If animations are enabled, the rect changes over time.
-  // For now, just update immediately.
   if (scope === TargetScope.ELEMENT) {
-    updateOverlayPosition(selectionOverlay, target);
+    targets.forEach(target => {
+      const overlay = selectionOverlays.get(target);
+      updateOverlayPosition(overlay || null, target);
+    });
   }
   renderPanel();
 }

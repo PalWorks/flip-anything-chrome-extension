@@ -231,6 +231,7 @@ const Panel: React.FC<PanelProps> = ({
                     <div ref={settingsRef} style={{ position: 'relative' }}>
                         <button
                             onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                            title="Settings"
                             style={{
                                 background: 'none',
                                 border: 'none',
@@ -270,6 +271,7 @@ const Panel: React.FC<PanelProps> = ({
                     </div>
                     <button
                         onClick={onClose}
+                        title="Close"
                         style={{
                             background: 'none',
                             border: 'none',
