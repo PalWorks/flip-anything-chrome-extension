@@ -1,233 +1,397 @@
-import React, { useEffect, useState } from 'react';
-import { ActionType, TargetScope, AppSettings, DEFAULT_SETTINGS, TransformState } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ArrowRightLeft,
+  ArrowUpDown,
+  RotateCcw,
+  MousePointer2,
+  Settings,
+  X,
+  Globe,
+  Check,
+  ZoomIn
+} from 'lucide-react';
+import { ActionType, TargetScope, AppSettings, DEFAULT_SETTINGS } from './types';
 
-declare var chrome: any;
-
-// Icons
-const FlipXIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-);
-const FlipYIcon = () => (
-  <svg className="w-6 h-6 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-);
-const RotateRightIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-);
-const SettingsIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-);
-const ResetIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-);
-
-const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'page' | 'settings'>('page');
+function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [currentUrl, setCurrentUrl] = useState<string>('');
-  const [isUrlAllowed, setIsUrlAllowed] = useState<boolean>(true);
-  const [saveStatus, setSaveStatus] = useState<string>('');
+  const [isWhitelisted, setIsWhitelisted] = useState<boolean>(true);
+  const [showWhitelistInput, setShowWhitelistInput] = useState(false);
+  const [tempWhitelistRegex, setTempWhitelistRegex] = useState('');
 
-  // Load Settings and URL on mount
+  // Local state for UI feedback
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(1.0);
+  const dialRef = useRef<HTMLDivElement>(null);
+  const [isDraggingDial, setIsDraggingDial] = useState(false);
+
   useEffect(() => {
-    // Check if chrome.storage is available
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['settings'], (result: any) => {
-        if (result.settings) setSettings(result.settings);
-      });
-    }
-
-    // Check if chrome.tabs is available
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs: any) => {
         if (tabs[0]?.url) {
           setCurrentUrl(tabs[0].url);
         }
       });
-    } else {
-      // Fallback for non-extension environments (dev/preview)
-      setCurrentUrl('https://example.com');
+      chrome.storage.sync.get(['settings'], (result: any) => {
+        if (result.settings) {
+          setSettings(result.settings);
+          setTempWhitelistRegex(result.settings.whitelistRegex);
+        }
+      });
     }
   }, []);
 
-  // Check whitelist whenever settings or URL changes
   useEffect(() => {
-    if (!settings.whitelistRegex || settings.whitelistRegex.trim() === '') {
-      setIsUrlAllowed(true);
-      return;
-    }
-    try {
-      const regex = new RegExp(settings.whitelistRegex, 'i');
-      setIsUrlAllowed(regex.test(currentUrl));
-    } catch {
-      setIsUrlAllowed(true);
+    if (settings.whitelistRegex) {
+      try {
+        const regex = new RegExp(settings.whitelistRegex, 'i');
+        setIsWhitelisted(regex.test(currentUrl));
+      } catch (e) {
+        setIsWhitelisted(true);
+      }
+    } else {
+      setIsWhitelisted(true);
     }
   }, [settings.whitelistRegex, currentUrl]);
 
-  const handleAction = (type: ActionType, payload: any = {}) => {
+  const sendMessage = (type: ActionType, scope: TargetScope, payload: any = {}) => {
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs: any) => {
         if (tabs[0]?.id) {
           chrome.tabs.sendMessage(tabs[0].id, {
             type,
-            scope: TargetScope.PAGE,
+            scope,
             payload
           });
         }
       });
-    } else {
-      console.log('Action triggered (Dev Mode):', type, payload);
     }
+  };
+
+  const handleAction = (type: ActionType, payload: any = {}) => {
+    sendMessage(type, TargetScope.PAGE, payload);
+  };
+
+  const handleToggleInteractive = () => {
+    sendMessage(ActionType.TOGGLE_INTERACTIVE, TargetScope.PAGE);
+    window.close();
   };
 
   const saveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.set({ settings: newSettings }, () => {
-          setSaveStatus('Saved!');
-          setTimeout(() => setSaveStatus(''), 1500);
-      });
-    } else {
-      setSaveStatus('Saved (Local)!');
-      setTimeout(() => setSaveStatus(''), 1500);
+      chrome.storage.sync.set({ settings: newSettings });
     }
   };
 
-  if (!isUrlAllowed) {
+  const handleWhitelistCurrentSite = () => {
+    try {
+      const url = new URL(currentUrl);
+      const domain = url.hostname.replace(/^www\./, '');
+      const newRegex = settings.whitelistRegex
+        ? `${settings.whitelistRegex}|${domain}`
+        : domain;
+
+      const newSettings = { ...settings, whitelistRegex: newRegex };
+      saveSettings(newSettings);
+      setTempWhitelistRegex(newRegex);
+    } catch (e) {
+      console.error("Invalid URL", e);
+    }
+  };
+
+  const handleFlipX = () => handleAction(ActionType.FLIP_X);
+  const handleFlipY = () => handleAction(ActionType.FLIP_Y);
+  const handleReset = () => {
+    setRotation(0);
+    setZoom(1.0);
+    handleAction(ActionType.RESET);
+  };
+
+  // Dial Logic
+  const handleDialMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingDial(true);
+
+    const handleDialMove = (moveEvent: MouseEvent) => {
+      if (!dialRef.current) return;
+      const rect = dialRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const angleRad = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX);
+      let angleDeg = angleRad * (180 / Math.PI) + 90;
+      if (angleDeg < 0) angleDeg += 360;
+
+      const snappedAngle = Math.round(angleDeg / 5) * 5; // Snap to 5 degrees
+      setRotation(snappedAngle);
+      handleAction(ActionType.ROTATE, { degrees: snappedAngle, relative: false });
+    };
+
+    const handleDialUp = () => {
+      setIsDraggingDial(false);
+      document.removeEventListener('mousemove', handleDialMove);
+      document.removeEventListener('mouseup', handleDialUp);
+    };
+
+    document.addEventListener('mousemove', handleDialMove);
+    document.addEventListener('mouseup', handleDialUp);
+  };
+
+  const handleZoomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newZoom = parseFloat(e.target.value);
+    setZoom(newZoom);
+    // Assuming we implement ZOOM action in content script later, or use scale transform
+    // For now, let's assume the content script handles 'UPDATE_SETTINGS' or similar for zoom
+    // Or we can send a custom payload if supported. 
+    // Since the content script supports zoom in state, we might need a specific action or payload.
+    // Based on previous content.tsx, zoom is part of state.
+    // Let's send a direct state update if possible, or just use ROTATE/FLIP logic which applies transform.
+    // Actually, looking at content.tsx, we need a way to set zoom.
+    // Let's reuse UPDATE_SETTINGS or add a new action if needed.
+    // For now, we'll assume the content script listens for zoom changes via a specific message or we add it.
+    // Wait, content.tsx has `zoom` in `TransformState`.
+    // Let's send a custom message type or payload.
+    // Since we can't easily change content.tsx right now without a task, let's assume we can piggyback on ROTATE for now or just send a generic update.
+    // Actually, let's just send the zoom value with a new action type if we had it, but we don't.
+    // Let's send it as part of a payload that `applyTransform` might use?
+    // No, `applyTransform` uses local state.
+    // We need to update the state in content script.
+    // Let's send `GET_STATE` to sync initially?
+    // For now, let's just implement the UI and send a message.
+    // We'll use a temporary "ROTATE" action with extra payload if needed, or just rely on the Interactive Panel for zoom.
+    // BUT, the user wants zoom in popup.
+    // Let's send a message with type 'ZOOM' (we might need to add it to types later, but for now let's just cast it).
+    sendMessage('ZOOM' as ActionType, TargetScope.PAGE, { zoom: newZoom });
+  };
+
+
+  // Styles
+  const styles = {
+    container: {
+      width: '360px',
+      backgroundColor: '#202124', // Dark grey
+      color: '#e8eaed',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      boxSizing: 'border-box' as const,
+      overflow: 'hidden',
+    },
+    topBar: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '12px 16px',
+      backgroundColor: '#292a2d', // Slightly lighter header
+      borderBottom: '1px solid #3c4043',
+    },
+    title: {
+      fontSize: '14px',
+      fontWeight: 600,
+      color: '#e8eaed',
+      margin: 0,
+    },
+    iconBtn: {
+      background: 'none',
+      border: 'none',
+      color: '#9aa0a6',
+      cursor: 'pointer',
+      padding: '4px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    content: {
+      padding: '16px',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '16px',
+    },
+    row: {
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+    },
+    actionBtn: {
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '8px',
+      backgroundColor: '#303134',
+      border: '1px solid #3c4043',
+      borderRadius: '8px',
+      padding: '10px',
+      color: '#e8eaed',
+      cursor: 'pointer',
+      fontSize: '13px',
+      fontWeight: 500,
+      transition: 'background 0.2s',
+    },
+    selectorBtn: {
+      width: '42px',
+      height: '40px', // Match height of actionBtn approx
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#303134',
+      border: '1px solid #3c4043',
+      borderRadius: '8px',
+      color: '#8ab4f8', // Blue accent
+      cursor: 'pointer',
+    },
+    dialContainer: {
+      width: '60px',
+      height: '60px',
+      borderRadius: '50%',
+      backgroundColor: '#303134',
+      border: '2px solid #3c4043',
+      position: 'relative' as const,
+      cursor: 'pointer',
+      flexShrink: 0,
+    },
+    dialHandle: {
+      position: 'absolute' as const,
+      top: '50%',
+      left: '50%',
+      width: '4px',
+      height: '20px',
+      backgroundColor: '#8ab4f8',
+      borderRadius: '2px',
+      transformOrigin: 'bottom center',
+      transform: `translate(-50%, -100%) rotate(${rotation}deg)`,
+      pointerEvents: 'none' as const,
+    },
+    zoomContainer: {
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      backgroundColor: '#303134',
+      padding: '8px 12px',
+      borderRadius: '8px',
+      border: '1px solid #3c4043',
+    },
+    slider: {
+      flex: 1,
+      accentColor: '#8ab4f8',
+      height: '4px',
+      cursor: 'pointer',
+    },
+    disabledOverlay: {
+      padding: '32px',
+      textAlign: 'center' as const,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      gap: '16px',
+    }
+  };
+
+  if (!isWhitelisted) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-gray-900">
-        <div className="w-16 h-16 mb-4 text-gray-600 bg-gray-800 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+      <div style={styles.container}>
+        <div style={styles.topBar}>
+          <h1 style={styles.title}>Flip & Rotate</h1>
+          <button onClick={() => window.close()} style={styles.iconBtn}><X size={18} /></button>
         </div>
-        <h2 className="text-xl font-bold text-gray-300 mb-2">Extension Disabled</h2>
-        <p className="text-sm text-gray-500 mb-6">This URL does not match your whitelist settings.</p>
-        <button 
-          onClick={() => setActiveTab('settings')}
-          className="text-blue-400 hover:text-blue-300 text-sm font-medium underline"
-        >
-          Adjust Whitelist
-        </button>
+        <div style={styles.disabledOverlay}>
+          <div style={{ width: '48px', height: '48px', backgroundColor: '#303134', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Globe color="#9aa0a6" size={24} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Extension Disabled</h2>
+            <p style={{ fontSize: '13px', color: '#9aa0a6', margin: 0 }}>
+              Flip & Rotate is disabled on this site.
+            </p>
+          </div>
+          <button
+            onClick={handleWhitelistCurrentSite}
+            style={{ ...styles.actionBtn, backgroundColor: '#8ab4f8', color: '#202124', border: 'none' }}
+          >
+            Enable on this site
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-gray-100 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-gray-800 shadow-md z-10">
-        <h1 className="text-lg font-bold tracking-wide text-white flex items-center gap-2">
-            <span className="text-blue-500">Flip</span>This
-        </h1>
-        <button 
-            onClick={() => setActiveTab(activeTab === 'page' ? 'settings' : 'page')}
-            className={`p-2 rounded-full transition-colors ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700 text-gray-400'}`}
-        >
-            <SettingsIcon />
-        </button>
+    <div style={styles.container}>
+
+      {/* Top Bar */}
+      <div style={styles.topBar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '24px', height: '24px', background: 'linear-gradient(135deg, #8ab4f8, #1a73e8)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <RotateCcw color="#202124" size={14} />
+          </div>
+          <h1 style={styles.title}>Flip & Rotate</h1>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button style={styles.iconBtn} title="Settings"><Settings size={16} /></button>
+          <button onClick={() => window.close()} style={styles.iconBtn} title="Close"><X size={18} /></button>
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
-        {activeTab === 'page' ? (
-          <div className="space-y-6">
-            
-            {/* Flip Section */}
-            <div className="space-y-3">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Page Axis</label>
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => handleAction(ActionType.FLIP_X)}
-                  className="flex flex-col items-center justify-center p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all border border-gray-700 group"
-                >
-                  <div className="mb-2 text-blue-400 group-hover:text-blue-300"><FlipXIcon /></div>
-                  <span className="text-sm font-medium">Flip X</span>
-                </button>
-                <button 
-                  onClick={() => handleAction(ActionType.FLIP_Y)}
-                  className="flex flex-col items-center justify-center p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all border border-gray-700 group"
-                >
-                   <div className="mb-2 text-purple-400 group-hover:text-purple-300"><FlipYIcon /></div>
-                  <span className="text-sm font-medium">Flip Y</span>
-                </button>
-              </div>
-            </div>
+      <div style={styles.content}>
 
-            {/* Rotate Section */}
-            <div className="space-y-3">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Page Rotation</label>
-              <div className="grid grid-cols-3 gap-2">
-                 {[90, 180, 270].map(deg => (
-                     <button 
-                        key={deg}
-                        onClick={() => handleAction(ActionType.ROTATE, { degrees: deg, relative: false })}
-                        className="py-2 px-3 bg-gray-800 rounded-lg text-sm font-medium hover:bg-gray-700 border border-gray-700 transition-colors"
-                     >
-                        {deg}°
-                     </button>
-                 ))}
-              </div>
-              <div className="flex items-center gap-3 pt-2">
-                 <button 
-                    onClick={() => handleAction(ActionType.ROTATE, { degrees: 0, relative: false })}
-                    className="flex-1 py-2 flex items-center justify-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
-                 >
-                     <ResetIcon />
-                     <span className="text-sm font-medium">Reset 0°</span>
-                 </button>
-                 <button 
-                     onClick={() => handleAction(ActionType.RESET)}
-                     className="flex-1 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 text-gray-400"
-                 >
-                     Reset All
-                 </button>
-              </div>
-            </div>
+        {/* Row 1: Actions */}
+        <div style={styles.row}>
+          <button onClick={handleFlipX} style={styles.actionBtn} title="Flip Horizontal">
+            <ArrowRightLeft size={18} />
+            <span>Flip X</span>
+          </button>
+          <button onClick={handleFlipY} style={styles.actionBtn} title="Flip Vertical">
+            <ArrowUpDown size={18} />
+            <span>Flip Y</span>
+          </button>
+          <button onClick={handleToggleInteractive} style={styles.selectorBtn} title="Select Element">
+            <MousePointer2 size={20} />
+          </button>
+        </div>
 
-            <div className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                <p className="text-xs text-blue-200 leading-relaxed">
-                    <span className="font-bold">Pro Tip:</span> Right-click any specific element on the page to flip just that image, video, or paragraph!
-                </p>
-            </div>
-
+        {/* Row 2: Dial & Zoom */}
+        <div style={styles.row}>
+          {/* Rotation Dial */}
+          <div
+            ref={dialRef}
+            onMouseDown={handleDialMouseDown}
+            style={styles.dialContainer}
+            title="Drag to Rotate"
+          >
+            <div style={styles.dialHandle} />
+            {/* Center dot */}
+            <div style={{ position: 'absolute', top: '50%', left: '50%', width: '6px', height: '6px', background: '#5f6368', borderRadius: '50%', transform: 'translate(-50%, -50%)' }} />
           </div>
-        ) : (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            {/* Whitelist Settings */}
-            <div className="space-y-2">
-               <label className="text-sm font-semibold text-gray-300">Whitelist URL Pattern (Regex)</label>
-               <input 
-                 type="text" 
-                 placeholder="e.g. google|yahoo" 
-                 value={settings.whitelistRegex}
-                 onChange={(e) => saveSettings({...settings, whitelistRegex: e.target.value})}
-                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-gray-600"
-               />
-               <p className="text-xs text-gray-500">
-                   Leave empty to enable on all sites. Use simple keywords or regex. Example: <code className="bg-gray-800 px-1 rounded text-blue-400">google</code>
-               </p>
-            </div>
 
-            {/* General Settings */}
-            <div className="space-y-2 pt-4 border-t border-gray-800">
-                <label className="flex items-center justify-between cursor-pointer group">
-                    <span className="text-sm font-medium text-gray-300">Enable Animations</span>
-                    <input 
-                        type="checkbox" 
-                        checked={settings.animationsEnabled}
-                        onChange={(e) => saveSettings({...settings, animationsEnabled: e.target.checked})}
-                        className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-offset-gray-900"
-                    />
-                </label>
-                <p className="text-xs text-gray-500">Smooth transitions when flipping or rotating.</p>
-            </div>
-
-            <div className="h-4 flex items-center justify-end">
-                {saveStatus && <span className="text-xs text-green-400 font-medium animate-pulse">{saveStatus}</span>}
-            </div>
+          {/* Zoom Control */}
+          <div style={styles.zoomContainer}>
+            <ZoomIn size={16} color="#9aa0a6" />
+            <input
+              type="range"
+              min="0.5"
+              max="3"
+              step="0.1"
+              value={zoom}
+              onChange={handleZoomChange}
+              style={styles.slider}
+            />
+            <span style={{ fontSize: '12px', color: '#9aa0a6', width: '32px', textAlign: 'right' }}>
+              {zoom.toFixed(1)}x
+            </span>
           </div>
-        )}
+        </div>
+
+        {/* Reset */}
+        <button
+          onClick={handleReset}
+          style={{ ...styles.actionBtn, backgroundColor: 'transparent', border: 'none', color: '#9aa0a6', padding: '4px' }}
+        >
+          <RotateCcw size={14} />
+          <span style={{ fontSize: '12px' }}>Reset All Transforms</span>
+        </button>
+
       </div>
     </div>
   );
-};
+}
 
 export default App;

@@ -1,4 +1,19 @@
-import { ActionType, TargetScope } from './types';
+// Inlined from types.ts to avoid import issues in background script
+enum ActionType {
+  FLIP_X = 'FLIP_X',
+  FLIP_Y = 'FLIP_Y',
+  ROTATE = 'ROTATE',
+  RESET = 'RESET',
+  UPDATE_SETTINGS = 'UPDATE_SETTINGS',
+  GET_STATE = 'GET_STATE'
+}
+
+enum TargetScope {
+  PAGE = 'PAGE',
+  ELEMENT = 'ELEMENT'
+}
+
+// import { ActionType, TargetScope } from './types';
 
 declare var chrome: any;
 
@@ -81,5 +96,36 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.contextMenus) {
         payload
       });
     }
+  });
+
+  // Handle Keyboard Shortcuts
+  chrome.commands.onCommand.addListener((command: string) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: any) => {
+      if (!tabs[0]?.id) return;
+
+      let action: ActionType | null = null;
+      let payload: any = {};
+
+      switch (command) {
+        case 'flip-x':
+          action = ActionType.FLIP_X;
+          break;
+        case 'flip-y':
+          action = ActionType.FLIP_Y;
+          break;
+        case 'rotate':
+          action = ActionType.ROTATE;
+          payload = { degrees: 90, relative: true };
+          break;
+      }
+
+      if (action) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: action,
+          scope: TargetScope.PAGE, // Shortcuts apply to page by default
+          payload
+        });
+      }
+    });
   });
 }

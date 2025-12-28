@@ -4,7 +4,8 @@ export enum ActionType {
   ROTATE = 'ROTATE',
   RESET = 'RESET',
   UPDATE_SETTINGS = 'UPDATE_SETTINGS',
-  GET_STATE = 'GET_STATE'
+  GET_STATE = 'GET_STATE',
+  TOGGLE_INTERACTIVE = 'TOGGLE_INTERACTIVE'
 }
 
 export enum TargetScope {
